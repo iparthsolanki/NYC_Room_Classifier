@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import joblib
 import time
+import requests
 import os
 
 # ----------------------------------------------------------------------------
@@ -17,7 +18,7 @@ st.set_page_config(
 # ----------------------------------------------------------------------------
 # CONSTANTS
 # ----------------------------------------------------------------------------
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "Model_Pipeline.pkl")
+API_URL = "https://nyc-room-classifier-2.onrender.com/predict"
 
 COLUMNS = [
     "latitude",
@@ -269,17 +270,13 @@ st.markdown(
 )
 
 # ----------------------------------------------------------------------------
-# MODEL LOADING
+# BACKEND CONNECTION CHECK
 # ----------------------------------------------------------------------------
-@st.cache_resource(show_spinner=False)
-def load_model():
-    return joblib.load(MODEL_PATH)
-
-
 model_load_error = None
-model = None
 try:
-    model = load_model()
+    response = requests.get("https://nyc-room-classifier-2.onrender.com/", timeout=10)
+    if response.status_code not in (200, 404):
+        model_load_error = f"Backend returned status {response.status_code}"
 except Exception as e:
     model_load_error = str(e)
 
@@ -333,7 +330,7 @@ with st.sidebar:
     if model_load_error:
         st.error("Model failed to load. See main panel for details.")
     else:
-        st.success("Model loaded and ready ✅")
+        st.success("Backend connected and ready ✅")
 
 # ----------------------------------------------------------------------------
 # HERO SECTION
@@ -429,9 +426,14 @@ if predict_clicked:
                 }
                 row = pd.DataFrame([input_data])[COLUMNS]
 
-                prediction = model.predict(row)[0]
-                probabilities = model.predict_proba(row)[0]
-                classes = model.classes_
+                response = requests.post(API_URL, json=input_data, timeout=30)
+                response.raise_for_status()
+
+                result = response.json()
+
+                prediction = result["predicted_room"]
+                probabilities = result["probability"]
+                classes = ["Entire home/apt", "Private room", "Shared room"]
 
                 prob_pairs = sorted(
                     zip(classes, probabilities), key=lambda x: x[1], reverse=True
